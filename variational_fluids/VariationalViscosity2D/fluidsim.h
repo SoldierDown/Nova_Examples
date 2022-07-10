@@ -17,7 +17,7 @@ public:
    void set_liquid(float (*phi)(const Vec3f &));
    void add_particle(const Vec3f &pos);
 
-   void advance(int frame, float dt);
+   void advance(float dt);
 
    // Grid dimensions
    int ni, nj, nk;
@@ -56,8 +56,6 @@ public:
 
    Vec3f get_velocity(const Vec3f &position);
 
-   std::string outpath;
-
 private:
    Vec3f trace_rk2(const Vec3f &position, float dt);
 
@@ -78,9 +76,6 @@ private:
    // helpers for viscosity
    void compute_viscosity_weights();
    void solve_viscosity(float dt);
-
-   // helpers for output
-   void output(int frame);
 };
 
 #endif

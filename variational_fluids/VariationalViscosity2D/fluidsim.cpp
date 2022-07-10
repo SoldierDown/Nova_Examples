@@ -43,7 +43,7 @@ void FluidSim::initialize(float width, int ni_, int nj_, int nk_)
 	liquid_phi_nodal.resize(ni + 1, nj + 1, nk + 1);
 
 	// set viscosity
-	viscosity.resize(ni, nj, nk, 0.f);
+	viscosity.resize(ni, nj, nk, 1.0f);
 
 	c_vol_liquid.resize(ni, nj, nk, 0);
 	u_vol_liquid.resize(ni + 1, nj, nk, 0);
@@ -101,7 +101,7 @@ void FluidSim::set_liquid(float (*phi)(const Vec3f &))
 }
 
 // The main fluid simulation step
-void FluidSim::advance(int frame, float dt)
+void FluidSim::advance(float dt)
 {
 	float t = 0;
 
@@ -118,10 +118,14 @@ void FluidSim::advance(int frame, float dt)
 		printf(" Velocity advection\n");
 		// Advance the velocity
 		advect(substep);
-		printf(" Solve viscosity");
 		add_force(substep);
 
-		// apply_viscosity(substep);
+		printf(" Solve viscosity");
+		apply_viscosity(substep);
+
+		extrapolate(u, u_valid);
+		extrapolate(v, v_valid);
+		extrapolate(w, w_valid);
 
 		printf(" Pressure projection\n");
 		project(substep);
@@ -141,7 +145,6 @@ void FluidSim::advance(int frame, float dt)
 
 		t += substep;
 	}
-	output(frame);
 }
 
 float FluidSim::cfl()
@@ -179,6 +182,7 @@ void FluidSim::add_force(float dt)
 
 void FluidSim::apply_viscosity(float dt)
 {
+
 	printf("Computing weights\n");
 	// Estimate weights at velocity and stress positions
 	compute_viscosity_weights();
@@ -190,107 +194,39 @@ void FluidSim::apply_viscosity(float dt)
 
 void FluidSim::solve_viscosity(float dt)
 {
-	// u_valid.assign(0);
-	// for (int k = 0; k < nk; ++k)
-	// 	for (int j = 0; j < nj; ++j)
-	// 		for (int i = 0; i < ni + 1; ++i)
-	// 		{
-	// 			if (i - 1 < 0 || i >= ni || cell_solid_phi(i - 1, j, k) + cell_solid_phi(i, j, k) <= 0)
-	// 				u_valid(i, j, k) = 0;
-	// 			else
-	// 				u_valid(i, j, k) = 1;
-	// 		}
-	// v_valid.assign(0);
-	// for (int k = 0; k < nk; ++k)
-	// 	for (int j = 0; j < nj + 1; ++j)
-	// 		for (int i = 0; i < ni; ++i)
-	// 		{
-	// 			if (j - 1 < 0 || j >= nj || cell_solid_phi(i, j - 1, k) + cell_solid_phi(i, j, k) <= 0)
-	// 				v_valid(i, j, k) = 0;
-	// 			else
-	// 				v_valid(i, j, k) = 1;
-	// 		}
-	// w_valid.assign(0);
-	// for (int k = 0; k < nk + 1; ++k)
-	// 	for (int j = 0; j < nj; ++j)
-	// 		for (int i = 0; i < ni; ++i)
-	// 		{
-	// 			if (k - 1 < 0 || k >= nk || cell_solid_phi(i, j, k - 1) + cell_solid_phi(i, j, k) <= 0)
-	// 				w_valid(i, j, k) = 0;
-	// 			else
-	// 				w_valid(i, j, k) = 1;
-	// 		}
-	Array3f up = u;
-	Array3f vp = v;
-	Array3f wp = w;
-#ifndef UM
-	advance_viscosity_implicit_weighted(u, v, w,
-										u_vol_liquid, v_vol_liquid, w_vol_liquid,
-										c_vol_liquid, ex_vol_liquid, ey_vol_liquid, ez_vol_liquid, liquid_phi, viscosity, dt, dx);
-#else
+	u_valid.assign(0);
+	for (int k = 0; k < nk; ++k)
+		for (int j = 0; j < nj; ++j)
+			for (int i = 0; i < ni + 1; ++i)
+			{
+				if (i - 1 < 0 || i >= ni || cell_solid_phi(i - 1, j, k) + cell_solid_phi(i, j, k) <= 0)
+					u_valid(i, j, k) = 0;
+				else
+					u_valid(i, j, k) = 1;
+			}
+	v_valid.assign(0);
+	for (int k = 0; k < nk; ++k)
+		for (int j = 0; j < nj + 1; ++j)
+			for (int i = 0; i < ni; ++i)
+			{
+				if (j - 1 < 0 || j >= nj || cell_solid_phi(i, j - 1, k) + cell_solid_phi(i, j, k) <= 0)
+					v_valid(i, j, k) = 0;
+				else
+					v_valid(i, j, k) = 1;
+			}
+	w_valid.assign(0);
+	for (int k = 0; k < nk + 1; ++k)
+		for (int j = 0; j < nj; ++j)
+			for (int i = 0; i < ni; ++i)
+			{
+				if (k - 1 < 0 || k >= nk || cell_solid_phi(i, j, k - 1) + cell_solid_phi(i, j, k) <= 0)
+					w_valid(i, j, k) = 0;
+				else
+					w_valid(i, j, k) = 1;
+			}
 	advance_viscosity_implicit_weighted(u, v, w,
 										u_vol_liquid, v_vol_liquid, w_vol_liquid,
 										c_vol_liquid, ex_vol_liquid, ey_vol_liquid, ez_vol_liquid, cell_solid_phi, viscosity, dt, dx);
-
-	int total_faces = ni * nj * (nk + 1);
-	double eps = 1.e-5;
-	bool to_stop = false;
-	// for (int i = 0; i < total_faces; ++i)
-	// {
-	// 	if (u_valid.a[i])
-	// 	{
-	// 		if (std::abs(up.a[i] - u.a[i]) > eps)
-	// 		{
-	// 			std::cout << "VALID u Wrong: " << up.a[i] << " to " << u.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// 	else
-	// 	{
-	// 		if (std::abs(up.a[i] - u.a[i]) > eps)
-	// 		{
-	// 			std::cout << "INVALID u Wrong: " << up.a[i] << " to " << u.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// 	if (v_valid.a[i])
-	// 	{
-	// 		if (std::abs(vp.a[i] - v.a[i]) > eps)
-	// 		{
-	// 			std::cout << "VALID v Wrong: " << vp.a[i] << " to " << v.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// 	else
-	// 	{
-	// 		if (std::abs(vp.a[i] - v.a[i]) > eps)
-	// 		{
-	// 			std::cout << "INVALID v Wrong: " << vp.a[i] << " to " << v.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// 	if (w_valid.a[i])
-	// 	{
-	// 		if (std::abs(wp.a[i] - w.a[i]) > eps)
-	// 		{
-	// 			std::cout << "VALID w Wrong: " << wp.a[i] << " to " << w.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// 	else
-	// 	{
-	// 		if (std::abs(wp.a[i] - w.a[i]) > eps)
-	// 		{
-	// 			std::cout << "INVALID w Wrong: " << wp.a[i] << " to " << w.a[i] << std::endl;
-	// 			to_stop = true;
-	// 		}
-	// 	}
-	// }
-	// if (to_stop)
-	// {
-	// 	getchar();
-	// }
-#endif
 }
 
 float interpolate_phi(const Vec3f &point, const Array3f &grid, const Vec3f &origin, const float dx)
@@ -300,9 +236,11 @@ float interpolate_phi(const Vec3f &point, const Array3f &grid, const Vec3f &orig
 	return interpolate_value(temp, grid);
 }
 
-void estimate_volume_fractions(Array3f &volumes, const Vec3f &start_centre, const float dx,
+void estimate_volume_fractions(Array3f &volumes,
+							   const Vec3f &start_centre, const float dx,
 							   const Array3f &phi, const Vec3f &phi_origin, const float phi_dx)
 {
+
 	for (int k = 0; k < volumes.nk; ++k)
 		for (int j = 0; j < volumes.nj; ++j)
 			for (int i = 0; i < volumes.ni; ++i)
@@ -326,8 +264,10 @@ void estimate_volume_fractions(Array3f &volumes, const Vec3f &start_centre, cons
 
 void FluidSim::compute_viscosity_weights()
 {
+
 	// These weights need to be mutually consistent,
 	// otherwise bits and pieces can get left hanging in the air, when there is inconsistent volumes.
+
 	// try estimating a consistent set of volume fractions by double-dividing the space
 	Array3f double_size_grid(2 * ni, 2 * nj, 2 * nk);
 #ifndef UM
@@ -700,11 +640,10 @@ Vec3f FluidSim::get_velocity(const Vec3f &position)
 // Compute finite-volume style face-weights for fluid from nodal signed distances
 void FluidSim::compute_weights()
 {
+
 	// Compute face area fractions (using marching squares cases).
 	for (int k = 0; k < nk; ++k)
-	{
 		for (int j = 0; j < nj; ++j)
-		{
 			for (int i = 0; i < ni + 1; ++i)
 			{
 				u_weights(i, j, k) = 1 - fraction_inside(nodal_solid_phi(i, j, k),
@@ -713,8 +652,6 @@ void FluidSim::compute_weights()
 														 nodal_solid_phi(i, j + 1, k + 1));
 				u_weights(i, j, k) = clamp(u_weights(i, j, k), 0.0f, 1.0f);
 			}
-		}
-	}
 	for (int k = 0; k < nk; ++k)
 		for (int j = 0; j < nj + 1; ++j)
 			for (int i = 0; i < ni; ++i)
@@ -740,7 +677,7 @@ void FluidSim::compute_weights()
 // An implementation of the variational pressure projection solve for static geometry
 void FluidSim::solve_pressure(float dt)
 {
-	const double eps = (double)1.e-7;
+
 	int ni = v.ni;
 	int nj = u.nj;
 	int nk = u.nk;
@@ -756,49 +693,6 @@ void FluidSim::solve_pressure(float dt)
 	matrix.zero();
 	rhs.assign(rhs.size(), 0);
 	pressure.assign(pressure.size(), 0);
-
-	u_valid.assign(0);
-	for (int k = 0; k < u.nk; ++k)
-	{
-		for (int j = 0; j < u.nj; ++j)
-		{
-			for (int i = 1; i < u.ni - 1; ++i)
-			{
-				if (u_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i - 1, j, k) < 0))
-				{
-					u_valid(i, j, k) = 1;
-				}
-			}
-		}
-	}
-	v_valid.assign(0);
-	for (int k = 0; k < v.nk; ++k)
-	{
-		for (int j = 1; j < v.nj - 1; ++j)
-		{
-			for (int i = 0; i < v.ni; ++i)
-			{
-				if (v_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i, j - 1, k) < 0))
-				{
-					v_valid(i, j, k) = 1;
-				}
-			}
-		}
-	}
-	w_valid.assign(0);
-	for (int k = 1; k < w.nk - 1; ++k)
-	{
-		for (int j = 0; j < w.nj; ++j)
-		{
-			for (int i = 0; i < w.ni; ++i)
-			{
-				if (w_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i, j, k - 1) < 0))
-				{
-					w_valid(i, j, k) = 1;
-				}
-			}
-		}
-	}
 
 	// Build the linear system for pressure
 	for (int k = 1; k < nk - 1; ++k)
@@ -830,11 +724,6 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] -= u_weights(i + 1, j, k) * u(i + 1, j, k) / dx;
-					if (!u_valid(i + 1, j, k) && std::abs(u_weights(i + 1, j, k)) > eps)
-					{
-						std::cout << "right weight: " << u_weights(i + 1, j, k) << std::endl;
-						getchar();
-					}
 
 					// left neighbour
 					term = u_weights(i, j, k) * dt / sqr(dx);
@@ -852,11 +741,7 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] += u_weights(i, j, k) * u(i, j, k) / dx;
-					if (!u_valid(i, j, k) && std::abs(u_weights(i, j, k)) > eps)
-					{
-						std::cout << "left weight: " << u_weights(i, j, k) << std::endl;
-						getchar();
-					}
+
 					// top neighbour
 					term = v_weights(i, j + 1, k) * dt / sqr(dx);
 					float top_phi = liquid_phi(i, j + 1, k);
@@ -873,11 +758,7 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] -= v_weights(i, j + 1, k) * v(i, j + 1, k) / dx;
-					if (!v_valid(i, j + 1, k) && std::abs(v_weights(i, j + 1, k)) > eps)
-					{
-						std::cout << "top weight: " << v_weights(i, j + 1, k) << std::endl;
-						getchar();
-					}
+
 					// bottom neighbour
 					term = v_weights(i, j, k) * dt / sqr(dx);
 					float bot_phi = liquid_phi(i, j - 1, k);
@@ -894,11 +775,7 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] += v_weights(i, j, k) * v(i, j, k) / dx;
-					if (!v_valid(i, j, k) && std::abs(v_weights(i, j, k)) > eps)
-					{
-						std::cout << "bottom weight: " << v_weights(i, j, k) << std::endl;
-						getchar();
-					}
+
 					// far neighbour
 					term = w_weights(i, j, k + 1) * dt / sqr(dx);
 					float far_phi = liquid_phi(i, j, k + 1);
@@ -915,11 +792,7 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] -= w_weights(i, j, k + 1) * w(i, j, k + 1) / dx;
-					if (!w_valid(i, j, k + 1) && std::abs(w_weights(i, j, k + 1)) > eps)
-					{
-						std::cout << "far weight: " << w_weights(i, j, k + 1) << std::endl;
-						getchar();
-					}
+
 					// near neighbour
 					term = w_weights(i, j, k) * dt / sqr(dx);
 					float near_phi = liquid_phi(i, j, k - 1);
@@ -936,11 +809,36 @@ void FluidSim::solve_pressure(float dt)
 						matrix.add_to_element(index, index, term / theta);
 					}
 					rhs[index] += w_weights(i, j, k) * w(i, j, k) / dx;
-					if (!w_valid(i, j, k) && std::abs(w_weights(i, j, k)) > eps)
-					{
-						std::cout << "near weight: " << w_weights(i, j, k) << std::endl;
-						getchar();
+
+					/*
+					//far neighbour
+					term = w_weights(i,j,k+1) * dt / sqr(dx);
+					float far_phi = liquid_phi(i,j,k+1);
+					if(far_phi < 0) {
+					   matrix.add_to_element(index, index, term);
+					   matrix.add_to_element(index, index + ni*nj, -term);
 					}
+					else {
+					   float theta = fraction_inside(centre_phi, far_phi);
+					   if(theta < 0.01f) theta = 0.01f;
+					   matrix.add_to_element(index, index, term/theta);
+					}
+					rhs[index] -= w_weights(i,j,k+1)*w(i,j,k+1) / dx;
+
+					//near neighbour
+					term = w_weights(i,j,k) * dt / sqr(dx);
+					float near_phi = liquid_phi(i,j,k-1);
+					if(near_phi < 0) {
+					   matrix.add_to_element(index, index, term);
+					   matrix.add_to_element(index, index - ni*nj, -term);
+					}
+					else {
+					   float theta = fraction_inside(centre_phi, near_phi);
+					   if(theta < 0.01f) theta = 0.01f;
+					   matrix.add_to_element(index, index, term/theta);
+					}
+					rhs[index] += w_weights(i,j,k)*w(i,j,k) / dx;
+					*/
 				}
 			}
 		}
@@ -961,12 +859,23 @@ void FluidSim::solve_pressure(float dt)
 	// Apply the velocity update
 	u_valid.assign(0);
 	for (int k = 0; k < u.nk; ++k)
-	{
 		for (int j = 0; j < u.nj; ++j)
-		{
 			for (int i = 1; i < u.ni - 1; ++i)
 			{
 				int index = i + j * ni + k * ni * nj;
+#ifdef A
+				if (!(cell_solid_phi(i - 1, j, k) + cell_solid_phi(i, j, k) <= 0))
+				{
+					float theta = 1;
+					if (liquid_phi(i, j, k) >= 0 || liquid_phi(i - 1, j, k) >= 0)
+						theta = fraction_inside(liquid_phi(i - 1, j, k), liquid_phi(i, j, k));
+					if (theta < 0.01f)
+						theta = 0.01f;
+					u(i, j, k) -= dt * (float)(pressure[index] - pressure[index - 1]) / dx / theta;
+					u_valid(i, j, k) = 1;
+				}
+#else
+
 				if (u_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i - 1, j, k) < 0))
 				{
 					float theta = 1;
@@ -977,17 +886,27 @@ void FluidSim::solve_pressure(float dt)
 					u(i, j, k) -= dt * (float)(pressure[index] - pressure[index - 1]) / dx / theta;
 					u_valid(i, j, k) = 1;
 				}
+#endif
 			}
-		}
-	}
+
 	v_valid.assign(0);
 	for (int k = 0; k < v.nk; ++k)
-	{
 		for (int j = 1; j < v.nj - 1; ++j)
-		{
 			for (int i = 0; i < v.ni; ++i)
 			{
 				int index = i + j * ni + k * ni * nj;
+#ifdef A
+				if (!(cell_solid_phi(i, j - 1, k) + cell_solid_phi(i, j, k) <= 0))
+				{
+					float theta = 1;
+					if (liquid_phi(i, j, k) >= 0 || liquid_phi(i, j - 1, k) >= 0)
+						theta = fraction_inside(liquid_phi(i, j - 1, k), liquid_phi(i, j, k));
+					if (theta < 0.01f)
+						theta = 0.01f;
+					v(i, j, k) -= dt * (float)(pressure[index] - pressure[index - ni]) / dx / theta;
+					v_valid(i, j, k) = 1;
+				}
+#else
 				if (v_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i, j - 1, k) < 0))
 				{
 					float theta = 1;
@@ -998,18 +917,27 @@ void FluidSim::solve_pressure(float dt)
 					v(i, j, k) -= dt * (float)(pressure[index] - pressure[index - ni]) / dx / theta;
 					v_valid(i, j, k) = 1;
 				}
+#endif
 			}
-		}
-	}
+
 	w_valid.assign(0);
 	for (int k = 1; k < w.nk - 1; ++k)
-	{
 		for (int j = 0; j < w.nj; ++j)
-		{
 			for (int i = 0; i < w.ni; ++i)
 			{
 				int index = i + j * ni + k * ni * nj;
-
+#ifdef A
+				if (!(cell_solid_phi(i, j, k - 1) + cell_solid_phi(i, j, k) <= 0))
+				{
+					float theta = 1;
+					if (liquid_phi(i, j, k) >= 0 || liquid_phi(i, j, k - 1) >= 0)
+						theta = fraction_inside(liquid_phi(i, j, k - 1), liquid_phi(i, j, k));
+					if (theta < 0.01f)
+						theta = 0.01f;
+					w(i, j, k) -= dt * (float)(pressure[index] - pressure[index - ni * nj]) / dx / theta;
+					w_valid(i, j, k) = 1;
+				}
+#else
 				if (w_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i, j, k - 1) < 0))
 				{
 					float theta = 1;
@@ -1020,9 +948,8 @@ void FluidSim::solve_pressure(float dt)
 					w(i, j, k) -= dt * (float)(pressure[index] - pressure[index - ni * nj]) / dx / theta;
 					w_valid(i, j, k) = 1;
 				}
+#endif
 			}
-		}
-	}
 
 	for (unsigned int i = 0; i < u_valid.a.size(); ++i)
 		if (u_valid.a[i] == 0)
@@ -1096,18 +1023,4 @@ void extrapolate(Array3f &grid, Array3c &valid)
 				}
 		grid = temp_grid;
 	}
-}
-
-void FluidSim::output(int frame)
-{
-	std::string obj_file;
-	char name[100];
-	snprintf(name, 100, "frame_%04d.txt", frame);
-	obj_file = outpath + "/" + std::string(name);
-	std::FILE *fp = std::fopen(obj_file.c_str(), "w");
-	for (int uid = 0; uid < (ni + 1) * nj * nk; ++uid)
-	{
-		fprintf(fp, "%f\n", u.a[uid]);
-	}
-	std::fclose(fp);
 }

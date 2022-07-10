@@ -36,7 +36,7 @@ float boundary_phi(const Vec3f &position)
 
 float liquid_phi(const Vec3f &position)
 {
-   return sphere_phi(position, Vec3f(0.55f, 0.45f, 0.4f), 0.23f);
+   return sphere_phi(position, Vec3f(0.55f, 0.55f, 0.4f), 0.23f);
 }
 
 void export_particles(string path, int frame, const std::vector<Vec3f> &particles, float radius);
@@ -45,8 +45,8 @@ void export_particles(string path, int frame, const std::vector<Vec3f> &particle
 //-------------
 int main(int argc, char **argv)
 {
-   sim.outpath = std::string(argv[1]);
-   File_Utilities::Create_Directory(sim.outpath);
+   std::string outpath = "Test_1";
+   File_Utilities::Create_Directory(outpath);
 
    printf("Initializing data\n");
    sim.initialize(grid_width, grid_resolution, grid_resolution, grid_resolution);
@@ -58,19 +58,19 @@ int main(int argc, char **argv)
    sim.set_liquid(liquid_phi);
 
    printf("Exporting initial data\n");
-   export_particles(sim.outpath, 0, sim.particles, sim.particle_radius);
+   export_particles(outpath, 0, sim.particles, sim.particle_radius);
 
-   for (frame = 1; frame < 100; ++frame)
+   for (frame = 1; frame < 50; ++frame)
    {
       printf("--------------------\nFrame %d\n", frame);
 
       // Simulate
       printf("Simulating liquid\n");
-      sim.advance(frame, timestep);
+      sim.advance(timestep);
 
       printf("Exporting particle data\n");
-      export_particles(sim.outpath, frame, sim.particles, sim.particle_radius);
-      File_Utilities::Write_To_Text_File(sim.outpath + "/info.nova-animation", std::to_string(frame));
+      export_particles(outpath, frame, sim.particles, sim.particle_radius);
+      File_Utilities::Write_To_Text_File(outpath + "/info.nova-animation", std::to_string(frame));
    }
 
    return 0;

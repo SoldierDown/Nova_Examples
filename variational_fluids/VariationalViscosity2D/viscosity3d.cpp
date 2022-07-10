@@ -1,6 +1,5 @@
 #include "viscosity3d.h"
 #include "array3.h"
-#include "defines.h"
 //#include "sparse/sparsematrix.h"
 //#include "sparse/cgsolver.h"
 #include "pcgsolver/pcg_solver.h"
@@ -86,75 +85,53 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 
 	// check if interpolated velocity positions are inside solid
 
-	/*
-	in projection:
+	/* 
+	in projection: 
 		if (u_weights(i, j, k) > 0 && (liquid_phi(i, j, k) < 0 || liquid_phi(i - 1, j, k) < 0)) => face is valid
 	in vis:
 		if (i - 1 < 0 || i >= nx || solid_phi(i - 1, j, k) + solid_phi(i, j, k) <= 0)
 	*/
 
+
 	for (int k = 0; k < nz; ++k)
-	{
 		for (int j = 0; j < ny; ++j)
-		{
 			for (int i = 0; i < nx + 1; ++i)
 			{
 				if (i - 1 < 0 || i >= nx || solid_phi(i - 1, j, k) + solid_phi(i, j, k) <= 0)
-				{
 					u_state(i, j, k) = SOLID;
-				}
 				else
-				{
 					u_state(i, j, k) = FLUID;
-				}
 			}
-		}
-	}
+
 	for (int k = 0; k < nz; ++k)
-	{
 		for (int j = 0; j < ny + 1; ++j)
-		{
 			for (int i = 0; i < nx; ++i)
 			{
 				if (j - 1 < 0 || j >= ny || solid_phi(i, j - 1, k) + solid_phi(i, j, k) <= 0)
-				{
 					v_state(i, j, k) = SOLID;
-				}
 				else
-				{
 					v_state(i, j, k) = FLUID;
-				}
 			}
-		}
-	}
+
 	for (int k = 0; k < nz + 1; ++k)
-	{
 		for (int j = 0; j < ny; ++j)
-		{
 			for (int i = 0; i < nx; ++i)
 			{
 				if (k - 1 < 0 || k >= nz || solid_phi(i, j, k - 1) + solid_phi(i, j, k) <= 0)
-				{
 					w_state(i, j, k) = SOLID;
-				}
 				else
-				{
 					w_state(i, j, k) = FLUID;
-				}
 			}
-		}
-	}
+
 	float factor = dt * sqr(over_dx);
-	const double eps = (double)1.e-7;
 	// u-terms
-	// 2u_xx + v_xy + uyy + u_zz + w_xz
+	// 2u_xx+ v_xy +uyy + u_zz + w_xz
 	printf("Building u-components.\n");
 	for (int k = 1; k < nz; ++k)
-	{
 		for (int j = 1; j < ny; ++j)
-		{
 			for (int i = 1; i < nx; ++i)
 			{
+
 				if (u_state(i, j, k) == FLUID)
 				{
 					int index = u_ind(i, j, k, nx, ny);
@@ -184,9 +161,8 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 						matrix.add_to_element(index, u_ind(i + 1, j, k, nx, ny), -2 * factor * visc_right * vol_right);
 					}
 					else if (u_state(i + 1, j, k) == SOLID)
-					{
 						rhs[index] -= -2 * factor * visc_right * vol_right * u(i + 1, j, k);
-					}
+
 					// u_x_left
 					matrix.add_to_element(index, index, 2 * factor * visc_left * vol_left);
 					if (u_state(i - 1, j, k) == FLUID)
@@ -267,15 +243,12 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 						rhs[index] -= -w(i - 1, j, k) * factor * visc_back * vol_back;
 				}
 			}
-		}
-	}
+
 	// v-terms
 	// vxx + 2vyy + vzz + u_yx + w_yz
 	printf("Building v-components.\n");
 	for (int k = 1; k < nz; ++k)
-	{
 		for (int j = 1; j < ny; ++j)
-		{
 			for (int i = 1; i < nx; ++i)
 			{
 				if (v_state(i, j, k) == FLUID)
@@ -387,15 +360,12 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 						rhs[index] -= -w(i, j - 1, k) * factor * visc_back * vol_back;
 				}
 			}
-		}
-	}
+
 	// w-terms
 	// wxx+ wyy+ 2wzz + u_zx + v_zy
 	printf("Building w-components.\n");
 	for (int k = 1; k < nz; ++k)
-	{
 		for (int j = 1; j < ny; ++j)
-		{
 			for (int i = 1; i < nx; ++i)
 			{
 				if (w_state(i, j, k) == FLUID)
@@ -508,8 +478,6 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 						rhs[index] -= -v(i, j, k - 1) * factor * visc_bottom * vol_bottom;
 				}
 			}
-		}
-	}
 	/*
 		static int u_ind(int i, int j, int k, int nx, int ny)
 		{
@@ -558,6 +526,23 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 				rhs[row] = w(ii, jj, kk);
 			}
 		}
+		else
+		{
+			// std::cout.precision(10);
+			// to_print = true;
+			// std::cout << "non-empty: " << row << std::endl;
+			// for (int j = 0; j < matrix.index[row].size(); ++j)
+			// {
+			// 	int col = matrix.index[row][j];
+			// 	int val = matrix.value[row][j];
+			// 	if (matrix.index[row].size() != matrix.value[row].size())
+			// 	{
+			// 		std::cout << "sizes do NOT match" << std::endl;
+			// 		getchar();
+			// 	}
+			// 	std::cout << row << ", " << col << ": " << val << std::endl;
+			// }
+		}
 	}
 	printf("Solving sparse system.\n");
 	PCGSolver<double> solver;
@@ -578,12 +563,8 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 	}
 
 	printf("Copying back.\n");
-	const float eps = (float)1.e-7;
-
 	for (int k = 0; k < nz; ++k)
-	{
 		for (int j = 0; j < ny; ++j)
-		{
 			for (int i = 0; i < nx + 1; ++i)
 			{
 				if (u_state(i, j, k) == FLUID)
@@ -593,19 +574,11 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 				else
 				{
 					u(i, j, k) = 0;
-					if (std::abs(u(i, j, k) - (float)soln[u_ind(i, j, k, nx, ny)]) > eps)
-					{
-						std::cout << "u changes: " << u(i, j, k) << " to " << (float)soln[u_ind(i, j, k, nx, ny)] << std::endl;
-						to_print = true;
-					}
 				}
 			}
-		}
-	}
+
 	for (int k = 0; k < nz; ++k)
-	{
 		for (int j = 0; j < ny + 1; ++j)
-		{
 			for (int i = 0; i < nx; ++i)
 			{
 				if (v_state(i, j, k) == FLUID)
@@ -615,20 +588,11 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 				else
 				{
 					v(i, j, k) = 0;
-					if (std::abs(v(i, j, k) - (float)soln[v_ind(i, j, k, nx, ny, nz)]) > eps)
-					{
-						std::cout << "v changes: " << (float)soln[v_ind(i, j, k, nx, ny, nz)] << " to " << v(i, j, k) << std::endl;
-						to_print = true;
-					}
 				}
 			}
-		}
-	}
-	for (int k = 0; k < nz + 1; ++k)
-	{
 
+	for (int k = 0; k < nz + 1; ++k)
 		for (int j = 0; j < ny; ++j)
-		{
 			for (int i = 0; i < nx; ++i)
 			{
 				if (w_state(i, j, k) == FLUID)
@@ -638,18 +602,7 @@ void advance_viscosity_implicit_weighted(Array3f &u, Array3f &v, Array3f &w,
 				else
 				{
 					w(i, j, k) = 0;
-					if (std::abs(w(i, j, k) - (float)soln[w_ind(i, j, k, nx, ny, nz)]) > eps)
-					{
-						std::cout << "w changes: " << w(i, j, k) << " to " << (float)soln[w_ind(i, j, k, nx, ny, nz)] << std::endl;
-						to_print = true;
-					}
 				}
 			}
-		}
-	}
-	if (to_print)
-	{
-		getchar();
-	}
 	printf("Done copying back.\n");
 }

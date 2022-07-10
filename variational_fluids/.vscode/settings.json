@@ -1,0 +1,28 @@
+{
+    "files.associations": {
+        "*.tcc": "cpp",
+        "*.ipp": "cpp",
+        "bitset": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "vector": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "system_error": "cpp",
+        "array": "cpp",
+        "valarray": "cpp",
+        "variant": "cpp",
+        "functional": "cpp",
+        "algorithm": "cpp",
+        "memory": "cpp",
+        "random": "cpp",
+        "fstream": "cpp",
+        "iosfwd": "cpp",
+        "iostream": "cpp",
+        "istream": "cpp",
+        "ostream": "cpp",
+        "numeric": "cpp",
+        "*.txx": "cpp"
+    }
+}
